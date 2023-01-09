@@ -19543,8 +19543,10 @@
       let routePhase = this.gnomes[0].position.distanceTo(this.route[0]);
       if (routePhase > followerDistance) {
         this.route.unshift(this.gnomes[0].position.clone());
-        this.route.pop();
         routePhase = 0;
+      }
+      if (this.route.length > this.gnomes.length) {
+        this.route = this.route.slice(0, this.gnomes.length);
       }
       const points = this.route.reduce((acc, segmentEnd, index, array) => {
         if (index === 0) {
