@@ -19457,6 +19457,8 @@
   controls.maxDistance = 10;
   var worldDirectionVector = new Vector3();
   var followerDistance = 1;
+  var collisionMultiplier = 0.95;
+  var lineBreakMultiplier = 1.5;
   var Gnome = class {
     constructor(position, target, sprite, positionMeshes, targetMeshes) {
       this.position = position;
@@ -19471,18 +19473,24 @@
     process(delta, leadingUnits, snapToTarget = false) {
       const isLeader = leadingUnits.length === 0;
       const distance = (isLeader ? this.leaderSpeed : this.followerSpeed) * delta;
+      let newPosition;
       if (snapToTarget && this.position.distanceTo(this.target) < distance) {
-        this.position.set(this.target.x, this.target.y);
+        newPosition = new Vector2(this.target.x, this.target.y);
       } else {
         const gnomeVector = this.target.clone().sub(this.position);
         gnomeVector.normalize().multiplyScalar(distance);
-        const newPosition = this.position.clone().add(gnomeVector);
-        if (leadingUnits.length === 0 || leadingUnits.every(
-          (unit) => unit.position.distanceTo(newPosition) > followerDistance
-        )) {
-          this.position = newPosition;
+        newPosition = this.position.clone().add(gnomeVector);
+      }
+      for (const unit of leadingUnits) {
+        if (newPosition.distanceTo(unit.position) < followerDistance * collisionMultiplier) {
+          const antiCollisionVector = unit.position.clone().sub(newPosition).negate();
+          antiCollisionVector.normalize().multiplyScalar(
+            followerDistance * collisionMultiplier - newPosition.distanceTo(unit.position)
+          );
+          newPosition.add(antiCollisionVector);
         }
       }
+      this.position = newPosition;
     }
     updateMeshes() {
       this.sprite.position.set(
@@ -19505,7 +19513,7 @@
   var GnomeLine = class {
     constructor(fancyGnomes, regularGnomes) {
       this.gnomes = [];
-      // private route: THREE.Vector2[] = []
+      this.route = [];
       this.target = new Vector2(0, 0);
       for (let i = 0; i < fancyGnomes; i++) {
         this.gnomes.push(
@@ -19529,32 +19537,42 @@
           )
         );
       }
+      this.route = this.gnomes.map((gnome2) => gnome2.position);
     }
     process(delta) {
-      const leader = this.gnomes[0];
-      const secondLeader = this.gnomes[1];
-      const followers = this.gnomes.slice(2);
-      leader.target = this.target;
-      leader.process(delta, [], true);
-      if (secondLeader) {
-        const didNotReachTarget = secondLeader.position.distanceTo(secondLeader.target) > 0;
-        secondLeader.process(delta, [leader], true);
-        if (didNotReachTarget && secondLeader.position.distanceTo(secondLeader.target) === 0) {
-          let previousTarget = secondLeader.target.clone();
-          secondLeader.target = leader.position.clone();
-          followers.forEach((follower) => {
-            let newPreviousTarget = follower.target.clone();
-            follower.target = previousTarget;
-            previousTarget = newPreviousTarget;
-          });
-        }
+      let routePhase = this.gnomes[0].position.distanceTo(this.route[0]);
+      if (routePhase > followerDistance) {
+        this.route.unshift(this.gnomes[0].position.clone());
+        this.route.pop();
+        routePhase = 0;
       }
-      followers.forEach((follower, index) => {
-        follower.process(
-          delta,
-          [leader, secondLeader, ...followers.slice(0, index)],
-          false
-        );
+      const points = this.route.reduce((acc, segmentEnd, index, array) => {
+        if (index === 0) {
+          return acc;
+        }
+        const segmentStart = array[index - 1];
+        const vector = segmentStart.clone().sub(segmentEnd);
+        vector.normalize().multiplyScalar(routePhase * followerDistance);
+        const point = segmentEnd.clone().add(vector);
+        return [...acc, point];
+      }, []);
+      let lineBreak = false;
+      this.gnomes.forEach((gnome2, index, array) => {
+        if (index === 0) {
+          gnome2.target = this.target.clone();
+        } else {
+          const point = points[index - 1];
+          if (!point || point.distanceTo(gnome2.position) > followerDistance * lineBreakMultiplier) {
+            lineBreak = true;
+            gnome2.target = array[index - 1].position.clone();
+            this.route = this.route.slice(0, index);
+          } else if (lineBreak) {
+            gnome2.target = array[index - 1].position.clone();
+          } else {
+            gnome2.target = point.clone();
+          }
+        }
+        gnome2.process(delta, array.slice(0, index), true);
       });
     }
     updateMeshes() {
@@ -19568,12 +19586,18 @@
     pointer.x = event.clientX / window.innerWidth * 2 - 1;
     pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
   });
-  window.addEventListener("dblclick", () => {
-    const intersects = raycaster.intersectObject(myPlane);
-    actors[0].target = new Vector2(
-      intersects[0].point.x,
-      intersects[0].point.z
-    );
+  var lastClick = Date.now();
+  window.addEventListener("click", () => {
+    const now = Date.now();
+    const delta = now - lastClick;
+    lastClick = now;
+    if (delta < 600) {
+      const intersects = raycaster.intersectObject(myPlane);
+      actors[0].target = new Vector2(
+        intersects[0].point.x,
+        intersects[0].point.z
+      );
+    }
   });
   function processWorld(delta) {
     actors.forEach((actor) => actor.process(delta));
