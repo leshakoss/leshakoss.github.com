@@ -19359,8 +19359,8 @@
         position.set(event.pageX, event.pageY);
       }
       function getSecondPointerPosition(event) {
-        const pointer2 = event.pointerId === pointers[0].pointerId ? pointers[1] : pointers[0];
-        return pointerPositions[pointer2.pointerId];
+        const pointer = event.pointerId === pointers[0].pointerId ? pointers[1] : pointers[0];
+        return pointerPositions[pointer.pointerId];
       }
       scope.domElement.addEventListener("contextmenu", onContextMenu);
       scope.domElement.addEventListener("pointerdown", onPointerDown);
@@ -19581,19 +19581,20 @@
   };
   var actors = [new GnomeLine(7, 23)];
   var raycaster = new Raycaster();
-  var pointer = new Vector2();
-  var _a;
-  (_a = document.querySelector("body")) == null ? void 0 : _a.addEventListener("pointermove", (event) => {
-    pointer.x = event.clientX / window.innerWidth * 2 - 1;
-    pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
-  });
   var lastClick = Date.now();
-  var _a2;
-  (_a2 = document.querySelector("body")) == null ? void 0 : _a2.addEventListener("click", () => {
+  var _a;
+  (_a = document.querySelector("body")) == null ? void 0 : _a.addEventListener("click", (event) => {
     const now = Date.now();
     const delta = now - lastClick;
     lastClick = now;
     if (delta < 600) {
+      raycaster.setFromCamera(
+        new Vector2(
+          event.clientX / window.innerWidth * 2 - 1,
+          -(event.clientY / window.innerHeight) * 2 + 1
+        ),
+        camera
+      );
       const intersects = raycaster.intersectObject(myPlane);
       actors[0].target = new Vector2(
         intersects[0].point.x,
@@ -19615,7 +19616,6 @@
     time = newTime;
     processWorld(delta);
     controls.update();
-    raycaster.setFromCamera(pointer, camera);
     camera.getWorldDirection(worldDirectionVector);
     updateWorld();
     renderer.render(scene, camera);
